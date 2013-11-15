@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	ConnectResponse = "HTTP/1.1 200 Connection established\r\n"
+	ConnectResponse = "HTTP/1.1 200 Connection established\r\n\r\n"
 )
 
 type A struct {
@@ -154,6 +154,25 @@ func handleConnection(conn *net.TCPConn){
 		return
 	}
 	
+	switch string(recvbuff[:7]){
+	case "CONNECT":
+		n := bytes.Index(recvbuff[:], []byte("\r"))
+		url := string(recvbuff[:n])
+		host := strings.Split(url, " ")[1]
+		rconn, err := net.Dial("tcp", host)
+		if err!=nil {
+			fmt.Printf("[ERROR] %s\n", err)
+			conn.Close()
+			return
+		}
+
+		fmt.Printf("[INFO] %s\n", url)
+		conn.Write([]byte(ConnectResponse))
+		Trans(conn, rconn.(*net.TCPConn))
+		return
+	default:
+	}
+
 	query := (Query)(recvbuff[:read])
 	host := query.Host()
 	if len(host)==0 {
@@ -161,7 +180,7 @@ func handleConnection(conn *net.TCPConn){
 		conn.Close()
 		return
 	}
-	// fmt.Printf("%s, %s\n",host, query.URL())
+	fmt.Printf("%s, %s\n",host, query.URL())
 	
 	rconn, err := net.Dial("tcp", host)
 	if err!=nil {
@@ -173,16 +192,6 @@ func handleConnection(conn *net.TCPConn){
 	content := query.Fix()
 	fmt.Printf("[TRACE] %d:%s\n", len(content), query.URL())
 
-	switch query.URL_cmd() {
-	case "CONNECT":
-		conn.Write([]byte(ConnectResponse))
-		// fmt.Printf("[ERROR] dont support %s\n", query.URL());
-		// conn.Close()
-		// rconn.Close()
-		Trans(conn, rconn.(*net.TCPConn))
-		return
-	default:
-	}
 	// fmt.Printf("[TRACE] %d:%s\n", read, query.URL())
 	query = (Query)(content)
 	// fmt.Printf("[TRACE] %d:%s\n", len(content), string(content))
@@ -227,6 +236,8 @@ func ReadConn(conn *net.TCPConn, pipe chan <- []byte){
 			n := bytes.Index(buffer[:reat], []byte("\r\n"))
 			fmt.Printf("[TRACE] %s:%s\n", conn.RemoteAddr(), string(buffer[:n]))
 			// fmt.Printf("[TRACE] %d,%s", reat, string(buffer[:reat]));
+		default:
+			// fmt.Printf("[TRACE] something...\n")
 		}
 		// fmt.Printf("[INFO] %s, <- %d\n", conn.RemoteAddr(), reat)
 		pipe <- buffer[0:reat]
